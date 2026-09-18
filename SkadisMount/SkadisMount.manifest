@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "id": "5a909c9e-fd04-4791-8fae-7c323c890e45",
+    "author": "Loic",
+    "description": {
+        "": "Adds hooks and support pegs for IKEA SKADIS boards with horizontal slots to a selected face, built from normal editable Fusion features."
+    },
+    "version": "1.0.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}

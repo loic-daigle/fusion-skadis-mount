@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+skadis_debug.log
+.DS_Store
+Thumbs.db
+*.zip
