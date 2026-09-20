@@ -1,29 +1,34 @@
 # -*- coding: utf-8 -*-
 """
-SkadisMount - Fusion 360 add-in  (v1.0: native, fully editable Fusion features)
+SkadisMount - Fusion 360 add-in  (v1.1)
 
-Select a planar face, then the border of that face that is the TOP, and click OK
-(Solid > Create > Add Skadis).
+Select a planar face, then the border of that face that is the TOP, choose the type of board
+(horizontal or vertical slots) and click OK  (Solid > Create > Add Skadis).
+
+Two hook types, one per board type:
+  * Horizontal slots  -> rounded 14 x 4 mm shaft + 10 x 7.5 x 3 mm lip overhanging towards the
+                         top edge, with a 3 x 3 mm chamfer on the opposite side
+  * Vertical slots    -> (implemented but NOT TESTED yet) the classic L-shaped hook: an obround 4 x 5 mm tab through the slot and a
+    (normal SKADIS)      4 mm wide obround lip turning 8 mm down behind the board (2.5 mm thick)
+The sizes are constants at the top of this file.
 
 Everything is built from ordinary Fusion features, collected in ONE collapsible timeline
-group called "Skadis: N hooks + M pegs". Expand the group and double-click any item to edit
-it exactly like a normal Fusion feature:
+group called "Skadis (horizontal|vertical): N hooks + M pegs". Expand the group and double-click
+any item to edit it exactly like a normal Fusion feature:
 
-  Sketch  "Skadis - shaft sketch"   14 x 4 mm rounded outlines of every hook and support peg
+  Sketch  "Skadis - shaft sketch"   outlines of every hook tab and support peg
                                      -> edit it to move / delete / copy shafts
   Extrude "Skadis - shafts"          the shafts, length = parameter SkadisBoardThickness
-  Sketch  "Skadis - lip sketch"      10 x 7.5 mm lip rectangles on top of the hook shafts
-  Extrude "Skadis - lips"            3 mm thick, parameter SkadisLipHeight
-  Chamfer "Skadis - lip chamfer"     3 x 3 mm on the edge opposite the overhang
+  Sketch  "Skadis - lip sketch"      lip rectangles on top of the hook shafts
+  Extrude "Skadis - lips"            parameter SkadisLipHeight
+  Chamfer "Skadis - lip chamfer"     horizontal boards only, parameter SkadisChamfer
 
-The three sizes are also user parameters (Modify > Change Parameters).
-
-Placement rules
-  * hooks: one row along the top edge, always 40 mm centre to centre, close to the top edge,
-    lips overhanging towards the top edge; quantity automatic or set by hand
-  * support pegs (same 14 x 4 mm rounded shaft, no lip) fill the other slot positions of the
-    board: rows 20 mm apart, alternate rows shifted 20 mm sideways; automatic = every peg that
-    fits, otherwise you type how many (row by row, starting next to the hooks)
+Placement rules (both board types)
+  * hooks: one row along the top edge, always 40 mm centre to centre, close to the top edge;
+    quantity automatic or set by hand
+  * support pegs (the hook tab without the lip) fill the other slot positions of the board:
+    rows 20 mm apart, alternate rows shifted 20 mm sideways; automatic = every peg that fits,
+    otherwise you type how many (row by row, starting next to the hooks)
 Needs a design with "Capture Design History" on (parametric).
 """
 import math
@@ -51,6 +56,15 @@ LIP_S = 10.0          # lip size along the slot
 LIP_W = 7.5           # lip size across the slot (overhangs the shaft by LIP_W - SHAFT_T)
 LIP_H = 3.0           # lip thickness
 CHAMFER = 3.0         # chamfer on the top edge of the flush 10 mm side (opposite the overhang)
+
+# Vertical-slot boards (the normal way SKADIS is used) get the classic L-shaped hook: a tab that goes
+# through the slot, then turns downwards behind the board. Seen from the side it is an "L".
+V_SHAFT_W = 4.0       # tab width across the slot (along the row)
+V_SHAFT_H = 5.0       # tab height along the slot (up/down)
+V_LIP_LEN = 8.0       # how far the lip reaches down below the tab, behind the board
+V_LIP_H = 2.5         # lip thickness behind the board
+V_RADIUS = 2.5        # end radius of tab, lip and pegs (obround). It can never exceed half the width,
+                      # so with the 4 mm width it becomes 2.0; a 5 mm wide part gets the full 2.5
 
 MM = 0.1              # Fusion's internal unit is cm
 
@@ -135,8 +149,39 @@ def frame_from_edge(on_face, n, a, b, centroid):
     return mid, s, up, edge_len
 
 
+def _rrect_area(length, width, radius):
+    """Area (mm2) of a rectangle with rounded corners; radius = width / 2 gives an obround."""
+    r = min(radius, width / 2.0, length / 2.0)
+    return length * width - (4.0 - math.pi) * r * r
+
+
+def get_spec(vertical):
+    """
+    Shape data of the hooks for a board with vertical (True) or horizontal (False) slots.
+    All in mm, in the frame  s = along the row / edge,  t = towards the top edge.
+    """
+    if vertical:
+        hs, ht = V_SHAFT_W / 2.0, V_SHAFT_H / 2.0
+        r = min(V_RADIUS, hs, ht)
+        straight = ht - r                       # half length of the straight sides
+        return dict(vertical=True, half_s=hs, half_t=ht,
+                    outline=[(0, 0), (0, ht), (0, -ht), (hs, 0), (-hs, 0),
+                             (hs, straight), (hs, -straight), (-hs, straight), (-hs, -straight)],
+                    shaft_area=_rrect_area(V_SHAFT_H, V_SHAFT_W, r),
+                    lip_area=_rrect_area(V_SHAFT_H + V_LIP_LEN, V_SHAFT_W, r),
+                    lip_h=V_LIP_H, chamfer=False, label='vertical', hook_word='L hook')
+    half_s, half_t = SHAFT_S / 2.0, SHAFT_T / 2.0
+    core = half_s - CORNER_R
+    return dict(vertical=False, half_s=half_s, half_t=half_t,
+                outline=[(0, 0), (half_s, 0), (-half_s, 0), (core, half_t), (core, -half_t),
+                         (-core, half_t), (-core, -half_t), (0, half_t), (0, -half_t)],
+                shaft_area=(SHAFT_S - SHAFT_T) * SHAFT_T + math.pi * (SHAFT_T / 2.0) ** 2,
+                lip_area=LIP_S * LIP_W,
+                lip_h=LIP_H, chamfer=True, label='horizontal', hook_word='hook')
+
+
 def plan_row(on_face, extents, frame, margin, auto, requested,
-             pegs=True, peg_auto=True, peg_requested=0):
+             pegs=True, peg_auto=True, peg_requested=0, spec=None):
     """
     Pure placement logic (lengths in cm, offsets in mm).
     on_face(point) -> bool tells whether a point of the face plane lies on the face.
@@ -145,15 +190,13 @@ def plan_row(on_face, extents, frame, margin, auto, requested,
       peg_list = [(offset_mm, row), ...]  row 0 = hook row, row 1 = 20 mm lower, ...
       peg_fit  = how many pegs would fit in total.
     """
+    spec = spec or get_spec(False)
     mid, s, t, edge_len = frame
-    t_base = -(margin + SHAFT_T * MM / 2.0)               # hook centre line, below the edge
+    half_s, half_t = spec['half_s'], spec['half_t']
+    t_base = -(margin + half_t * MM)                      # hook centre line, below the edge
 
-    # points of the rounded shaft outline (mm) - all must lie on the face
-    half_s = SHAFT_S / 2.0
-    half_t = SHAFT_T / 2.0
-    core = half_s - CORNER_R
-    outline = [(0, 0), (half_s, 0), (-half_s, 0), (core, half_t), (core, -half_t),
-               (-core, half_t), (-core, -half_t), (0, half_t), (0, -half_t)]
+    # points of the shaft outline (mm) - all must lie on the face
+    outline = spec['outline']
 
     def fits_at(off, tb):
         base = add(mid, mul(s, off * MM), mul(t, tb))
@@ -178,11 +221,11 @@ def plan_row(on_face, extents, frame, margin, auto, requested,
             row_step = PEG_ROW_GAP * MM
             for row in range(0, int(max(0.0, -tmin) / row_step) + 2):
                 tb = t_base - row * row_step
-                if tb - SHAFT_T * MM / 2.0 < tmin - 1e-6:
+                if tb - half_t * MM < tmin - 1e-6:
                     break                                 # would poke out below the face
                 start = hooks[0] + (row % 2) * PEG_ROW_GAP
-                j_lo = int(math.floor((smin / MM - SHAFT_S - start) / HOOK_PITCH))
-                j_hi = int(math.ceil((smax / MM + SHAFT_S - start) / HOOK_PITCH))
+                j_lo = int(math.floor((smin / MM - 2 * half_s - start) / HOOK_PITCH))
+                j_hi = int(math.ceil((smax / MM + 2 * half_s - start) / HOOK_PITCH))
                 for j in range(j_lo, j_hi + 1):
                     off = start + j * HOOK_PITCH
                     if row == 0 and any(abs(off - h) < 1e-6 for h in hooks):
@@ -195,9 +238,9 @@ def plan_row(on_face, extents, frame, margin, auto, requested,
             peg_fit = len(cands)
             peg_list = cands if peg_auto else cands[:peg_requested]
         return hooks, peg_list, peg_fit
-    return ('No hook fits along this edge. The shaft is 14 x 4 mm and must sit fully on '
+    return ('No hook fits along this edge. The shaft is {:g} x {:g} mm and must sit fully on '
             'the face, {:.1f} mm below the top edge. Try a smaller distance from the '
-            'edge or a bigger face.'.format(margin / MM))
+            'edge or a bigger face.'.format(2 * half_s, 2 * half_t, margin / MM))
 
 
 # ----------------------------------------------------------------------------
@@ -315,19 +358,77 @@ def _draw_stadium(sketch, base, s, t):
     _join(sketch, a2.endSketchPoint, l1.startSketchPoint)
 
 
-def _draw_lip(sketch, base_top, s, t):
-    """10 x 7.5 mm rectangle: its 10 mm edge on the shaft's flush side, overhanging towards +t."""
-    hs = LIP_S / 2.0 * MM
-    t0 = -SHAFT_T / 2.0 * MM
-    t1 = t0 + LIP_W * MM
-    corners = [(-hs, t0), (hs, t0), (hs, t1), (-hs, t1)]
-    pts = [_to_sketch(sketch, add(base_top, mul(s, a), mul(t, b))) for a, b in corners]
+def _draw_rounded_rect(sketch, center, u, v, length, width, radius):
+    """
+    Rectangle `length` (along u) x `width` (along v) mm with corner radius `radius`, centred on
+    `center`. When the radius reaches half the width the ends are full round: an obround.
+    """
+    hl, hw = length / 2.0, width / 2.0
+    r = min(radius, hw, hl)
+    k = math.sqrt(2.0) / 2.0
+
+    def P(a, b):
+        return _to_sketch(sketch, add(center, mul(u, a * MM), mul(v, b * MM)))
+
+    def line(a0, b0, a1, b1):
+        return ('line', (a0, b0), (a1, b1))
+
+    def arc(cx, cy, d0, d1):
+        m = ((d0[0] + d1[0]) * k, (d0[1] + d1[1]) * k)
+        return ('arc', (cx + r * d0[0], cy + r * d0[1]), (cx + r * m[0], cy + r * m[1]),
+                (cx + r * d1[0], cy + r * d1[1]))
+
+    segs = [line(-hl + r, -hw, hl - r, -hw), arc(hl - r, -hw + r, (0, -1), (1, 0)),
+            line(hl, -hw + r, hl, hw - r), arc(hl - r, hw - r, (1, 0), (0, 1)),
+            line(hl - r, hw, -hl + r, hw), arc(-hl + r, hw - r, (0, 1), (-1, 0)),
+            line(-hl, hw - r, -hl, -hw + r), arc(-hl + r, -hw + r, (-1, 0), (0, -1))]
+
+    lines = sketch.sketchCurves.sketchLines
+    arcs = sketch.sketchCurves.sketchArcs
+    ents = []
+    for seg in segs:
+        if seg[0] == 'line':
+            (a0, b0), (a1, b1) = seg[1], seg[2]
+            if abs(a1 - a0) + abs(b1 - b0) < 1e-6:
+                continue                                  # no straight part (obround end)
+            ents.append(lines.addByTwoPoints(P(a0, b0), P(a1, b1)))
+        else:
+            ents.append(arcs.addByThreePoints(P(*seg[1]), P(*seg[2]), P(*seg[3])))
+    for i, e in enumerate(ents):
+        _join(sketch, e.endSketchPoint, ents[(i + 1) % len(ents)].startSketchPoint)
+
+
+def _draw_rect(sketch, base, s, t, s0, s1, t0, t1):
+    """Rectangle from (s0, t0) to (s1, t1), in mm relative to `base` (s = row, t = up)."""
+    corners = [(s0, t0), (s1, t0), (s1, t1), (s0, t1)]
+    pts = [_to_sketch(sketch, add(base, mul(s, a * MM), mul(t, b * MM))) for a, b in corners]
     lines = sketch.sketchCurves.sketchLines
     first = lines.addByTwoPoints(pts[0], pts[1])
     prev = first
     for k in (2, 3):
         prev = lines.addByTwoPoints(prev.endSketchPoint, pts[k])
     lines.addByTwoPoints(prev.endSketchPoint, first.startSketchPoint)
+
+
+def _draw_shaft(sketch, base, s, t, spec):
+    """The tab that goes through the slot: rounded 14 x 4 (horizontal) or obround 4 x 5 (L hook)."""
+    if spec['vertical']:
+        _draw_rounded_rect(sketch, base, t, s, V_SHAFT_H, V_SHAFT_W, V_RADIUS)
+    else:
+        _draw_stadium(sketch, base, s, t)
+
+
+def _draw_lip(sketch, base_top, s, t, spec):
+    """
+    Horizontal boards: 10 x 7.5 mm, its 10 mm edge on the shaft's flush side, overhanging up.
+    Vertical boards (L hook): obround, 4 mm wide, from the top of the tab down 8 mm below it.
+    """
+    if spec['vertical']:
+        centre = add(base_top, mul(t, -V_LIP_LEN / 2.0 * MM))
+        _draw_rounded_rect(sketch, centre, t, s, V_SHAFT_H + V_LIP_LEN, V_SHAFT_W, V_RADIUS)
+    else:
+        t0 = -SHAFT_T / 2.0
+        _draw_rect(sketch, base_top, s, t, -LIP_S / 2.0, LIP_S / 2.0, t0, t0 + LIP_W)
 
 
 def _all_profiles(sketch, expected, area_mm2):
@@ -378,7 +479,7 @@ def _rollback(design, count_before, params):
 def create_features(design, face, edge, st, commit=True):
     """
     Builds sketch/extrude/sketch/extrude/chamfer on the face.
-    st = dict(auto, count, pegs, peg_auto, peg_count, margin_cm, board_cm)
+    st = dict(auto, count, pegs, peg_auto, peg_count, margin_cm, board_cm, vertical)
     commit=False (live preview): no timeline group.  Returns a message for the user or None.
     """
     err = _check_selection(face, edge)
@@ -393,18 +494,19 @@ def create_features(design, face, edge, st, commit=True):
         return fr
     n, frame = fr
     mid, s, t, _ = frame
+    spec = get_spec(st.get('vertical', False))
 
     plan = plan_row(lambda pt: _on_face(face, pt),
                     lambda o, s_, t_: _face_extents(face, o, s_, t_),
                     frame, st['margin_cm'], st['auto'], st['count'],
-                    st['pegs'], st['peg_auto'], st['peg_count'])
+                    st['pegs'], st['peg_auto'], st['peg_count'], spec)
     if isinstance(plan, str):
         return plan
     hooks, peg_list, peg_fit = plan
 
     board_t = st['board_cm']
-    lip_h = LIP_H * MM
-    t_base = -(st['margin_cm'] + SHAFT_T * MM / 2.0)
+    lip_h = spec['lip_h'] * MM
+    t_base = -(st['margin_cm'] + spec['half_t'] * MM)
 
     def at(off, row=0):
         return add(mid, mul(s, off * MM), mul(t, t_base - row * PEG_ROW_GAP * MM))
@@ -417,21 +519,20 @@ def create_features(design, face, edge, st, commit=True):
     try:
         p_board = _user_param(design, 'SkadisBoardThickness', board_t / MM,
                               'Skadis: shaft length (= board thickness)', params)
-        p_lip = _user_param(design, 'SkadisLipHeight', LIP_H,
+        p_lip = _user_param(design, 'SkadisLipHeight', spec['lip_h'],
                             'Skadis: lip thickness', params)
-        p_ch = _user_param(design, 'SkadisChamfer', CHAMFER,
-                           'Skadis: lip chamfer size', params)
+        p_ch = (_user_param(design, 'SkadisChamfer', CHAMFER, 'Skadis: lip chamfer size', params)
+                if spec['chamfer'] else None)
 
         # 1) shafts of every hook and support peg, sketched on the face and extruded
         sk1 = comp.sketches.addWithoutEdges(face)
         sk1.name = 'Skadis - shaft sketch'
         for off in hooks:
-            _draw_stadium(sk1, at(off), s, t)
+            _draw_shaft(sk1, at(off), s, t, spec)
         for off, row in peg_list:
-            _draw_stadium(sk1, at(off, row), s, t)
-        stadium_area = (SHAFT_S - SHAFT_T) * SHAFT_T + math.pi * (SHAFT_T / 2.0) ** 2
+            _draw_shaft(sk1, at(off, row), s, t, spec)
         ext1 = _extrude(comp, sk1,
-                        _all_profiles(sk1, len(hooks) + len(peg_list), stadium_area),
+                        _all_profiles(sk1, len(hooks) + len(peg_list), spec['shaft_area']),
                         p_board.name, n)
         ext1.name = 'Skadis - shafts'
 
@@ -439,42 +540,43 @@ def create_features(design, face, edge, st, commit=True):
         sk2 = comp.sketches.addWithoutEdges(ext1.endFaces.item(0))
         sk2.name = 'Skadis - lip sketch'
         for off in hooks:
-            _draw_lip(sk2, add(at(off), mul(n, board_t)), s, t)
-        ext2 = _extrude(comp, sk2, _all_profiles(sk2, len(hooks), LIP_S * LIP_W),
+            _draw_lip(sk2, add(at(off), mul(n, board_t)), s, t, spec)
+        ext2 = _extrude(comp, sk2, _all_profiles(sk2, len(hooks), spec['lip_area']),
                         p_lip.name, n)
         ext2.name = 'Skadis - lips'
 
-        # 3) chamfer on the top edge of the flush side of every lip
+        # 3) horizontal boards only: chamfer on the top edge of the flush side of every lip
         last = ext2
-        targets = [add(at(off), mul(t, -SHAFT_T / 2.0 * MM), mul(n, board_t + lip_h))
-                   for off in hooks]
-        edges = adsk.core.ObjectCollection.create()
-        for f in ext2.endFaces:
-            for e in f.edges:
-                if e.startVertex is None or e.endVertex is None:
-                    continue
-                a, b = a_pt(e.startVertex), a_pt(e.endVertex)
-                m = mul(add(a, b), 0.5)
-                if any(math.sqrt(dot(sub(m, tg), sub(m, tg))) < 0.01 for tg in targets):
-                    edges.add(e)
-        if edges.count == len(hooks):
-            ch_in = comp.features.chamferFeatures.createInput2()
-            ch_in.chamferEdgeSets.addEqualDistanceChamferEdgeSet(
-                edges, adsk.core.ValueInput.createByString(p_ch.name), True)
-            last = comp.features.chamferFeatures.add(ch_in)
-            last.name = 'Skadis - lip chamfer'
-        else:
-            notes.append('The lip chamfer was skipped: found {} of {} lip edges. '
-                         'You can add it by hand (Modify > Chamfer, 3 x 3 mm).'.format(
-                             edges.count, len(hooks)))
+        if spec['chamfer']:
+            targets = [add(at(off), mul(t, -SHAFT_T / 2.0 * MM), mul(n, board_t + lip_h))
+                       for off in hooks]
+            edges = adsk.core.ObjectCollection.create()
+            for f in ext2.endFaces:
+                for e in f.edges:
+                    if e.startVertex is None or e.endVertex is None:
+                        continue
+                    a, b = a_pt(e.startVertex), a_pt(e.endVertex)
+                    m = mul(add(a, b), 0.5)
+                    if any(math.sqrt(dot(sub(m, tg), sub(m, tg))) < 0.01 for tg in targets):
+                        edges.add(e)
+            if edges.count == len(hooks):
+                ch_in = comp.features.chamferFeatures.createInput2()
+                ch_in.chamferEdgeSets.addEqualDistanceChamferEdgeSet(
+                    edges, adsk.core.ValueInput.createByString(p_ch.name), True)
+                last = comp.features.chamferFeatures.add(ch_in)
+                last.name = 'Skadis - lip chamfer'
+            else:
+                notes.append('The lip chamfer was skipped: found {} of {} lip edges. '
+                             'You can add it by hand (Modify > Chamfer, 3 x 3 mm).'.format(
+                                 edges.count, len(hooks)))
 
         # one collapsed group for the whole thing
         if commit:
             try:
                 group = tl.timelineGroups.add(sk1.timelineObject.index,
                                               last.timelineObject.index)
-                group.name = 'Skadis: {} hook{} + {} peg{}'.format(
-                    len(hooks), '' if len(hooks) == 1 else 's',
+                group.name = 'Skadis ({}): {} {}{} + {} peg{}'.format(
+                    spec['label'], len(hooks), spec['hook_word'], '' if len(hooks) == 1 else 's',
                     len(peg_list), '' if len(peg_list) == 1 else 's')
                 group.isCollapsed = True
             except Exception:
@@ -511,6 +613,11 @@ def add_dialog_inputs(inputs):
     edge.addSelectionFilter('LinearEdges')
     edge.setSelectionLimits(min_sel, 1)
 
+    board = inputs.addDropDownCommandInput(
+        'board', 'Board slots', adsk.core.DropDownStyles.TextListDropDownStyle)
+    board.listItems.add('Horizontal (slots run left/right)', True)
+    board.listItems.add('Vertical (normal: slots run up/down) - L hook', False)
+
     inputs.addBoolValueInput('auto', 'Automatic quantity', True, '', True)
     count = inputs.addIntegerSpinnerCommandInput('count', 'Number of hooks', 1, 20, 1, 2)
     count.isEnabled = False
@@ -529,9 +636,11 @@ def add_dialog_inputs(inputs):
 
     inputs.addTextBoxCommandInput(
         'info', '',
-        'Hooks: one row along the top edge, always 40 mm centre to centre, lips '
-        'overhanging towards the top. Support pegs: plain 14 x 4 mm shafts (no '
-        'lip) in the board\'s other slot positions below the hooks. Automatic '
+        'Hooks: one row along the top edge, always 40 mm centre to centre. Horizontal '
+        'boards get the rounded 14 x 4 mm hook with its lip overhanging towards the '
+        'top; vertical boards get the classic L hook (tab through the slot, lip '
+        'turning down behind the board). Support pegs: the same tab without the '
+        'lip, in the board\'s other slot positions below the hooks. Automatic '
         'fills every position that fits; otherwise they are placed row by row '
         'starting next to the hooks. Everything is created as normal Fusion '
         'features in one timeline group: expand it and double-click any item to '
@@ -548,6 +657,7 @@ def read_settings(inputs):
         'peg_count': inputs.itemById('pegCount').value,
         'margin_cm': inputs.itemById('margin').value,
         'board_cm': inputs.itemById('boardT').value,
+        'vertical': inputs.itemById('board').selectedItem.index == 1,
     }
 
 

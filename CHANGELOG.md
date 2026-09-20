@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+- **Vertical-slot boards** (the normal way SKÅDIS is used) are now supported with the classic **L-shaped
+  hook**: an obround tab through the slot and an obround lip turning down behind the board. The tab, lip and
+  support pegs have fully rounded ends (end radius 2.5 mm, limited to half the width, so R2 with the 4 mm width).
+  Choose the board type in the dialog ("Board slots"). Horizontal boards keep the rounded hook with the chamfered lip.
+- Hook placement (one row along the top edge, 40 mm apart) and the support pegs work the same way for both.
+- **Vertical boards are implemented but not tested yet.**
+
 ## 1.0.0
 First release.
 

@@ -2,13 +2,21 @@
 
 A small [Autodesk Fusion](https://www.autodesk.com/products/fusion-360) add-in that turns any flat
 face of your model into something you can hang on an **IKEA SKÅDIS** pegboard: you pick the face and
-its top edge, and it adds rounded hook tabs and support pegs that fit the board's slots.
+its top edge, choose your type of board, and it adds hooks and support pegs that fit the board's slots.
 
 Everything is built from **normal Fusion features** (sketches, extrusions, a chamfer), so you can edit
 the result the usual way afterwards.
 
-> **Currently for horizontal-slot boards only.** The hooks are laid out for a SKÅDIS board whose slots run
-> left/right (a board mounted turned by 90 degrees). Vertical-slot boards are not supported yet.
+Two board types are supported, each with its own hook:
+
+| Board | Hook |
+| --- | --- |
+| **Horizontal slots** (slots run left/right, a board turned by 90 degrees) | Rounded 14 x 4 mm shaft with a chamfered lip overhanging towards the top edge |
+| **Vertical slots** (the normal way SKÅDIS is used) | The classic **L-shaped hook**: a tab through the slot, then a lip turning down behind the board |
+
+> **Vertical boards are implemented but not tested yet.** The horizontal-board hook is the one that has
+> been tried out. If you test the vertical L hook, please open an issue with what worked or didn't
+> (a photo of the print on the board helps a lot).
 
 > Not affiliated with, endorsed by or sponsored by IKEA. SKÅDIS is a trademark of Inter IKEA Systems B.V.
 
@@ -17,14 +25,15 @@ the result the usual way afterwards.
 1. Click **Add Skadis** (Solid tab > Create).
 2. Pick the **face** that will sit flat against the board.
 3. Pick the **top edge** of that face (the border that is the top when the part hangs).
-4. Click OK. A live preview is shown while you change the options.
+4. Choose **Board slots**: horizontal or vertical.
+5. Click OK. A live preview is shown while you change the options.
 
 ### Placement rules
 
 - **Hooks:** one single row along the top edge, always **40 mm centre to centre**, close to the top
-  edge. The quantity is automatic (as many as fit) or set by hand. The lip of every hook overhangs
-  towards the top edge.
-- **Support pegs:** plain shafts (no lip) in the board's other slot positions, to make the part sit
+  edge. The quantity is automatic (as many as fit) or set by hand. On horizontal boards the lip of
+  every hook overhangs towards the top edge; on vertical boards the L hook's lip turns downwards.
+- **Support pegs:** the same tab without the lip, in the board's other slot positions, to make the part sit
   solidly. Rows are 20 mm apart and every other row is shifted by 20 mm, like the real board.
   Automatic mode fills every position that fits on the face, or you type how many you want (they are
   placed row by row, starting next to the hooks).
@@ -35,14 +44,17 @@ the result the usual way afterwards.
 | --- | --- |
 | Face | Planar face that sits flat on the board |
 | Top edge | Straight edge of that face that is the top |
+| Board slots | Horizontal (slots run left/right) or Vertical (normal, slots run up/down) - decides the hook type |
 | Automatic quantity / Number of hooks | Fill the edge with as many hooks as fit, or a fixed number |
 | Support pegs / Automatic peg quantity / Number of support pegs | Add the pegs, fill the face, or a fixed number |
-| Distance from top edge | Gap between the top edge and the top side of the hook shaft (default 1.5 mm) |
+| Distance from top edge | Gap between the top edge and the top side of the hook tab (default 1.5 mm) |
 | Shaft length (board thickness) | Length of the shafts, default 5 mm |
 
-## The hook
+## The hooks
 
 All sizes in millimetres (change them in the constants at the top of `SkadisMount.py`).
+
+**Horizontal boards**
 
 | Part | Size |
 | --- | --- |
@@ -50,14 +62,28 @@ All sizes in millimetres (change them in the constants at the top of `SkadisMoun
 | Lip | 10 x 7.5, 3 thick, on top of the shaft. Its 10 mm edge lies on one long side of the shaft, so it overhangs the shaft by 3.5 towards the top edge |
 | Chamfer | 3 x 3 on the top edge of the lip's flush side (the side opposite the overhang) |
 
+**Vertical boards: L hook** (implemented, not tested yet)
+
+| Part | Size |
+| --- | --- |
+| Tab | Obround, 4 wide (across the slot) x 5 high (along the slot), 5 long (the board thickness) |
+| Lip | Obround, 4 wide, 2.5 thick, starting at the top of the tab and reaching 8 down below it, behind the board |
+
+Tab, lip and the support pegs have fully rounded ends so they follow the rounded ends of the slot. The end
+radius is set to 2.5 mm (`V_RADIUS`) but can never exceed half the width, so with the 4 mm width it is R2.
+A part wide enough for a full R2.5 would be as wide as the 5 mm slot and would not enter, so keep some
+clearance (for example 4.6 mm wide gives R2.3).
+
+Tab and lip together are 13 mm tall, so the hook slips through a 15 mm slot and then slides down behind
+the board. The L hook sizes are my defaults for a standard hook, adjust them to your own printer and board.
+
 **Please check the board dimensions used** against your own SKÅDIS boards before printing: slots are
-assumed to be 15 x 5 and run **horizontally** (the hook shaft, 14 x 4, lies along the slot), 5 mm board
-thickness, hooks 40 mm apart in a row and rows 20 mm apart. The values are constants at the top of the
-script.
+assumed to be 15 x 5, 5 mm board thickness, hooks 40 mm apart in a row and rows 20 mm apart (with every
+other row shifted by 20 mm). The values are constants at the top of the script.
 
 ## Editing the result
 
-The add-in creates one collapsed timeline group named like **"Skadis: 3 hooks + 5 pegs"**. Expand it and
+The add-in creates one collapsed timeline group named like **"Skadis (horizontal): 3 hooks + 5 pegs"**. Expand it and
 double-click any item as usual:
 
 | Timeline item | What you can change |
@@ -66,16 +92,16 @@ double-click any item as usual:
 | Skadis - shafts | The extrusion of the shafts |
 | Skadis - lip sketch | The lip rectangles |
 | Skadis - lips | The extrusion of the lips |
-| Skadis - lip chamfer | The chamfer |
+| Skadis - lip chamfer | The chamfer (horizontal boards only) |
 
-`SkadisBoardThickness`, `SkadisLipHeight` and `SkadisChamfer` are also user parameters
+`SkadisBoardThickness`, `SkadisLipHeight` and `SkadisChamfer` (horizontal boards) are also user parameters
 (Modify > Change Parameters). To change the number of hooks or pegs, edit the sketches, or delete the
 group and run **Add Skadis** again.
 
 ## Requirements
 
 - Autodesk Fusion (Windows or macOS)
-- A SKÅDIS board with **horizontal slots** (slots running left/right)
+- A SKÅDIS board with horizontal or vertical slots
 - A design with **Capture Design History** on (parametric). The hooks need the timeline.
 - The face must belong to a body in the active component.
 
@@ -100,7 +126,7 @@ After changing or replacing the add-in files, stop and run it again.
 - **No button:** the folder must be called `SkadisMount` and contain the `.py` and `.manifest` files
   directly (not one folder deeper). Make sure the add-in is running (Shift+S > Add-Ins).
 - **"Please turn on Capture Design History":** right-click the top node in the browser and enable it.
-- **"No hook fits along this edge":** the face is too small for a 14 x 4 mm shaft at the current
+- **"No hook fits along this edge":** the face is too small for the hook tab at the current
   distance from the edge. Use a smaller distance or a bigger face.
 - **Something failed:** an error message with details is shown, and the add-in undoes what it had
   already built. There is also a log next to the add-in, `skadis_debug.log`. Please include both in a
