@@ -69,6 +69,7 @@ All sizes in millimetres (change them in the constants at the top of `SkadisMoun
 | Shaft | 14 x 4, fully rounded ends (R2), 5 long (the board thickness) |
 | Lip | 10 x 7.5, 3 thick, on top of the shaft. Its 10 mm edge lies on one long side of the shaft, so it overhangs the shaft by 3.5 towards the top edge |
 | Chamfer | 3 x 3 on the top edge of the lip's flush side (the side opposite the overhang) |
+| Support peg | 14.75 x 4.75, fully rounded ends, 5 long (a bit bigger than the shaft for a snug fit in the slot) |
 
 **Vertical boards: L hook** (implemented, not tested yet)
 
