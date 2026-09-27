@@ -307,20 +307,42 @@ def _p3(v):
 def _face_extents(face, origin, s, t):
     """Bounding box of the face in the (s, t) frame -> (smin, smax, tmin, tmax) in cm."""
     ss, ts = [], []
+
+    def add_point(p):
+        d = sub((p.x, p.y, p.z), origin)
+        ss.append(dot(d, s))
+        ts.append(dot(d, t))
+
     for edge in face.edges:
-        ev = edge.evaluator
-        ok, lo, hi = ev.getParameterExtents()
+        for v in (edge.startVertex, edge.endVertex):
+            if v is not None:
+                add_point(v.geometry)
+        try:
+            ev = edge.evaluator
+            ok, lo, hi = ev.getParameterExtents()
+        except Exception:
+            continue
         if not ok:
             continue
         steps = 32
         for i in range(steps + 1):
-            ok, p = ev.getPointAtParameter(lo + (hi - lo) * i / steps)
+            # Fusion refuses parameters even a rounding error outside [lo, hi]; skip those
+            u = min(max(lo + (hi - lo) * i / steps, min(lo, hi)), max(lo, hi))
+            try:
+                ok, p = ev.getPointAtParameter(u)
+            except Exception:
+                continue
             if ok:
-                d = sub((p.x, p.y, p.z), origin)
-                ss.append(dot(d, s))
-                ts.append(dot(d, t))
+                add_point(p)
     if not ss:
-        return None
+        # last resort: the corners of the face's bounding box (bigger than the face, but every
+        # peg is still checked against the real face before it is placed)
+        bb = face.boundingBox
+        lo_, hi_ = bb.minPoint, bb.maxPoint
+        for x in (lo_.x, hi_.x):
+            for y in (lo_.y, hi_.y):
+                for z in (lo_.z, hi_.z):
+                    add_point(adsk.core.Point3D.create(x, y, z))
     return min(ss), max(ss), min(ts), max(ts)
 
 

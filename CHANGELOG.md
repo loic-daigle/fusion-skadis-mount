@@ -7,6 +7,8 @@
   3 hooks 40 mm apart). With a set number of hooks they are spread as evenly as the slots allow.
 - *Spread to the ends* is the default for vertical boards (L hooks); horizontal boards keep *Every 40 mm*.
   Switching the board type switches this default, and you can still pick either.
+- Fixed a crash ("invalid argument parameter") while measuring faces whose edges Fusion could not sample
+  at their exact end parameter.
 
 ## 1.1.0
 - **Vertical-slot boards** (the normal way SKÅDIS is used) are now supported with the classic **L-shaped
