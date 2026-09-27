@@ -269,18 +269,47 @@ def _p3(v):
 def _face_extents(face, origin, s, t):
     """Bounding box of the face in the (s, t) frame -> (smin, smax, tmin, tmax) in cm."""
     ss, ts = [], []
+
+    def keep(p):
+        d = sub((p.x, p.y, p.z), origin)
+        ss.append(dot(d, s))
+        ts.append(dot(d, t))
+
     for edge in face.edges:
-        ev = edge.evaluator
-        ok, lo, hi = ev.getParameterExtents()
-        if not ok:
+        # some edges refuse parameters right at the ends of their own range (rounding), so
+        # stay just inside it and never let one bad point stop the whole measurement
+        try:
+            for v in (edge.startVertex, edge.endVertex):
+                if v is not None:
+                    keep(v.geometry)
+            ev = edge.evaluator
+            ok, lo, hi = ev.getParameterExtents()
+            if not ok:
+                continue
+            eps = (hi - lo) * 1e-6
+            lo, hi = lo + eps, hi - eps
+            steps = 32
+            for i in range(steps + 1):
+                try:
+                    ok, p = ev.getPointAtParameter(lo + (hi - lo) * i / steps)
+                except Exception:
+                    continue
+                if ok:
+                    keep(p)
+        except Exception:
             continue
-        steps = 32
-        for i in range(steps + 1):
-            ok, p = ev.getPointAtParameter(lo + (hi - lo) * i / steps)
-            if ok:
-                d = sub((p.x, p.y, p.z), origin)
-                ss.append(dot(d, s))
-                ts.append(dot(d, t))
+    if not ss:
+        # last resort: the corners of the face's bounding box (a bit too big, which is fine:
+        # every peg position is still checked against the real face)
+        try:
+            bb = face.boundingBox
+            lo, hi = bb.minPoint, bb.maxPoint
+            for x in (lo.x, hi.x):
+                for y in (lo.y, hi.y):
+                    for z in (lo.z, hi.z):
+                        keep(adsk.core.Point3D.create(x, y, z))
+        except Exception:
+            return None
     if not ss:
         return None
     return min(ss), max(ss), min(ts), max(ts)
