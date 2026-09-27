@@ -30,8 +30,15 @@ Two board types are supported, each with its own hook:
 
 ### Placement rules
 
-- **Hooks:** one single row along the top edge, always **40 mm centre to centre**, close to the top
-  edge. The quantity is automatic (as many as fit) or set by hand. On horizontal boards the lip of
+- **Hooks:** one single row along the top edge, close to the top edge, in slots that are **40 mm apart**.
+  The quantity is automatic or set by hand. **Hook spacing** decides how the row is filled:
+  - *Every 40 mm* (default for horizontal boards): the hooks are packed 40 mm centre to centre and as
+    many as fit are used, so an odd number always has one in the centre.
+  - *Spread to the ends* (default for vertical boards): the hooks use the outermost slots that fit, with
+    gaps of 40, 80, ... mm. The automatic quantity skips the centre hook of an odd row, so a 100 mm wide
+    part gets 2 hooks 80 mm apart instead of 3 hooks 40 mm apart.
+
+  On horizontal boards the lip of
   every hook overhangs towards the top edge; on vertical boards the L hook's lip turns downwards.
 - **Support pegs:** the same tab without the lip, in the board's other slot positions, to make the part sit
   solidly. Rows are 20 mm apart and every other row is shifted by 20 mm, like the real board.
@@ -45,7 +52,8 @@ Two board types are supported, each with its own hook:
 | Face | Planar face that sits flat on the board |
 | Top edge | Straight edge of that face that is the top |
 | Board slots | Horizontal (slots run left/right) or Vertical (normal, slots run up/down) - decides the hook type |
-| Automatic quantity / Number of hooks | Fill the edge with as many hooks as fit, or a fixed number |
+| Hook spacing | Every 40 mm (packed) or Spread to the ends (outermost slots, no centre hook) |
+| Automatic quantity / Number of hooks | Automatic (see Hook spacing), or a fixed number |
 | Support pegs / Automatic peg quantity / Number of support pegs | Add the pegs, fill the face, or a fixed number |
 | Distance from top edge | Gap between the top edge and the top side of the hook tab (default 1.5 mm) |
 | Shaft length (board thickness) | Length of the shafts, default 5 mm |

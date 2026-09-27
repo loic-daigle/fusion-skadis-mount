@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+- New **Hook spacing** option: *Every 40 mm* (as before) or *Spread to the ends*. Spread puts the hooks in the
+  outermost slots that fit, with gaps of 40, 80, ... mm, and never forces a hook into the centre: with automatic
+  quantity an odd row drops its centre hook (for example a 100 mm wide part gets 2 hooks 80 mm apart instead of
+  3 hooks 40 mm apart). With a set number of hooks they are spread as evenly as the slots allow.
+- *Spread to the ends* is the default for vertical boards (L hooks); horizontal boards keep *Every 40 mm*.
+  Switching the board type switches this default, and you can still pick either.
+
 ## 1.1.0
 - **Vertical-slot boards** (the normal way SKÅDIS is used) are now supported with the classic **L-shaped
   hook**: an obround tab through the slot and an obround lip turning down behind the board. The tab, lip and
