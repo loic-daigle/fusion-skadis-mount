@@ -26,7 +26,8 @@ any item to edit it exactly like a normal Fusion feature:
 Placement rules (both board types)
   * hooks: one row along the top edge, always 40 mm centre to centre, close to the top edge;
     quantity automatic or set by hand
-  * support pegs (the hook tab without the lip) fill the other slot positions of the board:
+  * support pegs (the hook tab without the lip; 14.75 x 4.75 mm on horizontal boards for a snug
+    fit) fill the other slot positions of the board:
     rows 20 mm apart, alternate rows shifted 20 mm sideways; automatic = every peg that fits,
     otherwise you type how many (row by row, starting next to the hooks)
 Needs a design with "Capture Design History" on (parametric).
@@ -52,6 +53,8 @@ PEG_ROW_GAP = 20.0    # slot rows are 20 mm apart (alternate rows shifted 20 mm 
 SHAFT_S = 14.0        # shaft length (along the slot)
 SHAFT_T = 4.0         # shaft width (across the slot); the ends are full round (R = SHAFT_T / 2)
 CORNER_R = SHAFT_T / 2.0   # the shaft ends are full round
+PEG_S = 14.75         # support peg length (along the slot), a bit bigger than the shaft for a snug fit
+PEG_T = 4.75          # support peg width (across the slot); full round ends (R = PEG_T / 2)
 LIP_S = 10.0          # lip size along the slot
 LIP_W = 7.5           # lip size across the slot (overhangs the shaft by LIP_W - SHAFT_T)
 LIP_H = 3.0           # lip thickness
@@ -155,6 +158,18 @@ def _rrect_area(length, width, radius):
     return length * width - (4.0 - math.pi) * r * r
 
 
+def _stadium_outline(length, width):
+    """Check points (mm) of a `length` x `width` outline with full round ends, centred on 0."""
+    hs, ht = length / 2.0, width / 2.0
+    core = hs - ht
+    return [(0, 0), (hs, 0), (-hs, 0), (core, ht), (core, -ht),
+            (-core, ht), (-core, -ht), (0, ht), (0, -ht)]
+
+
+def _stadium_area(length, width):
+    return (length - width) * width + math.pi * (width / 2.0) ** 2
+
+
 def get_spec(vertical):
     """
     Shape data of the hooks for a board with vertical (True) or horizontal (False) slots.
@@ -164,18 +179,19 @@ def get_spec(vertical):
         hs, ht = V_SHAFT_W / 2.0, V_SHAFT_H / 2.0
         r = min(V_RADIUS, hs, ht)
         straight = ht - r                       # half length of the straight sides
-        return dict(vertical=True, half_s=hs, half_t=ht,
-                    outline=[(0, 0), (0, ht), (0, -ht), (hs, 0), (-hs, 0),
-                             (hs, straight), (hs, -straight), (-hs, straight), (-hs, -straight)],
-                    shaft_area=_rrect_area(V_SHAFT_H, V_SHAFT_W, r),
+        outline = [(0, 0), (0, ht), (0, -ht), (hs, 0), (-hs, 0),
+                   (hs, straight), (hs, -straight), (-hs, straight), (-hs, -straight)]
+        area = _rrect_area(V_SHAFT_H, V_SHAFT_W, r)
+        return dict(vertical=True, half_s=hs, half_t=ht, outline=outline, shaft_area=area,
+                    peg_half_s=hs, peg_half_t=ht, peg_outline=outline, peg_area=area,
                     lip_area=_rrect_area(V_SHAFT_H + V_LIP_LEN, V_SHAFT_W, r),
                     lip_h=V_LIP_H, chamfer=False, label='vertical', hook_word='L hook')
-    half_s, half_t = SHAFT_S / 2.0, SHAFT_T / 2.0
-    core = half_s - CORNER_R
-    return dict(vertical=False, half_s=half_s, half_t=half_t,
-                outline=[(0, 0), (half_s, 0), (-half_s, 0), (core, half_t), (core, -half_t),
-                         (-core, half_t), (-core, -half_t), (0, half_t), (0, -half_t)],
-                shaft_area=(SHAFT_S - SHAFT_T) * SHAFT_T + math.pi * (SHAFT_T / 2.0) ** 2,
+    return dict(vertical=False, half_s=SHAFT_S / 2.0, half_t=SHAFT_T / 2.0,
+                outline=_stadium_outline(SHAFT_S, SHAFT_T),
+                shaft_area=_stadium_area(SHAFT_S, SHAFT_T),
+                peg_half_s=PEG_S / 2.0, peg_half_t=PEG_T / 2.0,
+                peg_outline=_stadium_outline(PEG_S, PEG_T),
+                peg_area=_stadium_area(PEG_S, PEG_T),
                 lip_area=LIP_S * LIP_W,
                 lip_h=LIP_H, chamfer=True, label='horizontal', hook_word='hook')
 
@@ -195,10 +211,10 @@ def plan_row(on_face, extents, frame, margin, auto, requested,
     half_s, half_t = spec['half_s'], spec['half_t']
     t_base = -(margin + half_t * MM)                      # hook centre line, below the edge
 
-    # points of the shaft outline (mm) - all must lie on the face
-    outline = spec['outline']
+    peg_half_s, peg_half_t = spec['peg_half_s'], spec['peg_half_t']
 
-    def fits_at(off, tb):
+    def fits_at(off, tb, outline=spec['outline']):
+        """All check points of the outline (mm) must lie on the face."""
         base = add(mid, mul(s, off * MM), mul(t, tb))
         for x, y in outline:
             if not on_face(add(base, mul(s, x * MM), mul(t, y * MM))):
@@ -221,16 +237,16 @@ def plan_row(on_face, extents, frame, margin, auto, requested,
             row_step = PEG_ROW_GAP * MM
             for row in range(0, int(max(0.0, -tmin) / row_step) + 2):
                 tb = t_base - row * row_step
-                if tb - half_t * MM < tmin - 1e-6:
+                if tb - peg_half_t * MM < tmin - 1e-6:
                     break                                 # would poke out below the face
                 start = hooks[0] + (row % 2) * PEG_ROW_GAP
-                j_lo = int(math.floor((smin / MM - 2 * half_s - start) / HOOK_PITCH))
-                j_hi = int(math.ceil((smax / MM + 2 * half_s - start) / HOOK_PITCH))
+                j_lo = int(math.floor((smin / MM - 2 * peg_half_s - start) / HOOK_PITCH))
+                j_hi = int(math.ceil((smax / MM + 2 * peg_half_s - start) / HOOK_PITCH))
                 for j in range(j_lo, j_hi + 1):
                     off = start + j * HOOK_PITCH
                     if row == 0 and any(abs(off - h) < 1e-6 for h in hooks):
                         continue                          # that slot already holds a hook
-                    if fits_at(off, tb):
+                    if fits_at(off, tb, spec['peg_outline']):
                         cands.append((off, row))
             # row by row starting next to the hooks (the hook row's leftovers last),
             # and from the middle outwards inside a row
@@ -253,18 +269,47 @@ def _p3(v):
 def _face_extents(face, origin, s, t):
     """Bounding box of the face in the (s, t) frame -> (smin, smax, tmin, tmax) in cm."""
     ss, ts = [], []
+
+    def keep(p):
+        d = sub((p.x, p.y, p.z), origin)
+        ss.append(dot(d, s))
+        ts.append(dot(d, t))
+
     for edge in face.edges:
-        ev = edge.evaluator
-        ok, lo, hi = ev.getParameterExtents()
-        if not ok:
+        # some edges refuse parameters right at the ends of their own range (rounding), so
+        # stay just inside it and never let one bad point stop the whole measurement
+        try:
+            for v in (edge.startVertex, edge.endVertex):
+                if v is not None:
+                    keep(v.geometry)
+            ev = edge.evaluator
+            ok, lo, hi = ev.getParameterExtents()
+            if not ok:
+                continue
+            eps = (hi - lo) * 1e-6
+            lo, hi = lo + eps, hi - eps
+            steps = 32
+            for i in range(steps + 1):
+                try:
+                    ok, p = ev.getPointAtParameter(lo + (hi - lo) * i / steps)
+                except Exception:
+                    continue
+                if ok:
+                    keep(p)
+        except Exception:
             continue
-        steps = 32
-        for i in range(steps + 1):
-            ok, p = ev.getPointAtParameter(lo + (hi - lo) * i / steps)
-            if ok:
-                d = sub((p.x, p.y, p.z), origin)
-                ss.append(dot(d, s))
-                ts.append(dot(d, t))
+    if not ss:
+        # last resort: the corners of the face's bounding box (a bit too big, which is fine:
+        # every peg position is still checked against the real face)
+        try:
+            bb = face.boundingBox
+            lo, hi = bb.minPoint, bb.maxPoint
+            for x in (lo.x, hi.x):
+                for y in (lo.y, hi.y):
+                    for z in (lo.z, hi.z):
+                        keep(adsk.core.Point3D.create(x, y, z))
+        except Exception:
+            return None
     if not ss:
         return None
     return min(ss), max(ss), min(ts), max(ts)
@@ -338,10 +383,10 @@ def _join(sketch, a, b):
         pass
 
 
-def _draw_stadium(sketch, base, s, t):
-    """14 x 4 mm outline with R2 ends: two lines + two arcs, centred on `base`."""
-    hc = (SHAFT_S / 2.0 - SHAFT_T / 2.0) * MM          # half length of the straight part
-    hw = SHAFT_T / 2.0 * MM                            # half width = end radius
+def _draw_stadium(sketch, base, s, t, length=SHAFT_S, width=SHAFT_T):
+    """`length` x `width` mm outline with full round ends: two lines + two arcs, centred on `base`."""
+    hc = (length / 2.0 - width / 2.0) * MM             # half length of the straight part
+    hw = width / 2.0 * MM                              # half width = end radius
 
     def P(a, b):
         return _to_sketch(sketch, add(base, mul(s, a), mul(t, b)))
@@ -410,10 +455,15 @@ def _draw_rect(sketch, base, s, t, s0, s1, t0, t1):
     lines.addByTwoPoints(prev.endSketchPoint, first.startSketchPoint)
 
 
-def _draw_shaft(sketch, base, s, t, spec):
-    """The tab that goes through the slot: rounded 14 x 4 (horizontal) or obround 4 x 5 (L hook)."""
+def _draw_shaft(sketch, base, s, t, spec, peg=False):
+    """
+    The tab that goes through the slot: rounded 14 x 4 (horizontal) or obround 4 x 5 (L hook).
+    Support pegs on horizontal boards are a bit bigger (14.75 x 4.75) to sit snug in the slot.
+    """
     if spec['vertical']:
         _draw_rounded_rect(sketch, base, t, s, V_SHAFT_H, V_SHAFT_W, V_RADIUS)
+    elif peg:
+        _draw_stadium(sketch, base, s, t, PEG_S, PEG_T)
     else:
         _draw_stadium(sketch, base, s, t)
 
@@ -431,7 +481,7 @@ def _draw_lip(sketch, base_top, s, t, spec):
         _draw_rect(sketch, base_top, s, t, -LIP_S / 2.0, LIP_S / 2.0, t0, t0 + LIP_W)
 
 
-def _all_profiles(sketch, expected, area_mm2):
+def _all_profiles(sketch, expected, *areas_mm2):
     """The closed outlines we drew (recognised by their area), never the face region around them."""
     profs = adsk.core.ObjectCollection.create()
     for pr in sketch.profiles:
@@ -439,7 +489,7 @@ def _all_profiles(sketch, expected, area_mm2):
             a = pr.areaProperties().area * 100.0            # cm2 -> mm2
         except Exception:
             a = None
-        if a is None or abs(a - area_mm2) <= 0.03 * area_mm2:
+        if a is None or any(abs(a - ar) <= 0.03 * ar for ar in areas_mm2):
             profs.add(pr)
     if profs.count != expected:
         raise RuntimeError('{} closed outlines expected in "{}", found {}'.format(
@@ -530,9 +580,10 @@ def create_features(design, face, edge, st, commit=True):
         for off in hooks:
             _draw_shaft(sk1, at(off), s, t, spec)
         for off, row in peg_list:
-            _draw_shaft(sk1, at(off, row), s, t, spec)
+            _draw_shaft(sk1, at(off, row), s, t, spec, peg=True)
         ext1 = _extrude(comp, sk1,
-                        _all_profiles(sk1, len(hooks) + len(peg_list), spec['shaft_area']),
+                        _all_profiles(sk1, len(hooks) + len(peg_list),
+                                      spec['shaft_area'], spec['peg_area']),
                         p_board.name, n)
         ext1.name = 'Skadis - shafts'
 

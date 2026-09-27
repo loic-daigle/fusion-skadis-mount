@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- **Horizontal boards:** the support pegs are now 14.75 x 4.75 mm (were 14 x 4, the same as the hook shaft)
+  so they hold better in the board. The hooks keep their 14 x 4 mm shaft. Set with `PEG_S` / `PEG_T`.
+- Fixed "invalid argument parameter" when measuring the face for the support pegs: an edge that refuses a
+  point no longer stops the command (edge ends and the face's bounding box are used as backup).
+
 ## 1.1.0
 - **Vertical-slot boards** (the normal way SKÅDIS is used) are now supported with the classic **L-shaped
   hook**: an obround tab through the slot and an obround lip turning down behind the board. The tab, lip and
