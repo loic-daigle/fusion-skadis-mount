@@ -1,10 +1,20 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 - **Horizontal boards:** the support pegs are now 14.75 x 4.75 mm (were 14 x 4, the same as the hook shaft)
   so they hold better in the board. The hooks keep their 14 x 4 mm shaft. Set with `PEG_S` / `PEG_T`.
 - Fixed "invalid argument parameter" when measuring the face for the support pegs: an edge that refuses a
   point no longer stops the command (edge ends and the face's bounding box are used as backup).
+- The log (`skadis_debug.log`) now records the real version and the file path when the add-in starts, and
+  error messages show the version, so it is easy to see which copy Fusion is running.
+
+## 1.2.0
+- New **Hook spacing** option: *Every 40 mm* (as before) or *Spread to the ends*. Spread puts the hooks in the
+  outermost slots that fit, with gaps of 40, 80, ... mm, and never forces a hook into the centre: with automatic
+  quantity an odd row drops its centre hook (for example a 100 mm wide part gets 2 hooks 80 mm apart instead of
+  3 hooks 40 mm apart). With a set number of hooks they are spread as evenly as the slots allow.
+- *Spread to the ends* is the default for vertical boards (L hooks); horizontal boards keep *Every 40 mm*.
+  Switching the board type switches this default, and you can still pick either.
 
 ## 1.1.0
 - **Vertical-slot boards** (the normal way SKÅDIS is used) are now supported with the classic **L-shaped

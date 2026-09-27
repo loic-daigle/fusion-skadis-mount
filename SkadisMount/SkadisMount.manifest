@@ -6,7 +6,7 @@
     "description": {
         "": "Adds IKEA SKADIS hooks (horizontal boards) or L-shaped hooks (vertical boards) and support pegs to a selected face, built from normal editable Fusion features."
     },
-    "version": "1.1.0",
+    "version": "1.2.1",
     "runOnStartup": false,
     "supportedOS": "windows|mac",
     "editEnabled": true

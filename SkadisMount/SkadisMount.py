@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SkadisMount - Fusion 360 add-in  (v1.1)
+SkadisMount - Fusion 360 add-in  (v1.2.1)
 
 Select a planar face, then the border of that face that is the TOP, choose the type of board
 (horizontal or vertical slots) and click OK  (Solid > Create > Add Skadis).
@@ -24,8 +24,10 @@ any item to edit it exactly like a normal Fusion feature:
   Chamfer "Skadis - lip chamfer"     horizontal boards only, parameter SkadisChamfer
 
 Placement rules (both board types)
-  * hooks: one row along the top edge, always 40 mm centre to centre, close to the top edge;
-    quantity automatic or set by hand
+  * hooks: one row along the top edge, close to the top edge; quantity automatic or set by hand.
+    Hook spacing "every 40 mm" packs them 40 mm centre to centre (an odd count has one in the
+    centre); "spread to the ends" (default for L hooks) uses the outermost slots that fit with
+    gaps of 40, 80, ... mm, and the automatic quantity then skips the centre hook (3 -> 2, 5 -> 4)
   * support pegs (the hook tab without the lip; 14.75 x 4.75 mm on horizontal boards for a snug
     fit) fill the other slot positions of the board:
     rows 20 mm apart, alternate rows shifted 20 mm sideways; automatic = every peg that fits,
@@ -42,7 +44,7 @@ import adsk.fusion
 # ----------------------------------------------------------------------------
 # SKADIS board (mm) -- verify against your board!
 # ----------------------------------------------------------------------------
-HOOK_PITCH = 40.0     # fixed centre-to-centre distance of hooks in the row
+HOOK_PITCH = 40.0     # distance between neighbouring slots in a row (hook gaps are multiples of it)
 DEF_BOARD_T = 5.0     # board thickness = shaft length (editable)
 DEF_MARGIN = 1.5      # gap between the top edge and the shaft's top side (editable)
 PEG_ROW_GAP = 20.0    # slot rows are 20 mm apart (alternate rows shifted 20 mm sideways)
@@ -70,6 +72,8 @@ V_RADIUS = 2.5        # end radius of tab, lip and pegs (obround). It can never 
                       # so with the 4 mm width it becomes 2.0; a 5 mm wide part gets the full 2.5
 
 MM = 0.1              # Fusion's internal unit is cm
+
+VERSION = '1.2.1'     # keep in step with SkadisMount.manifest
 
 CMD_ID = 'skadisMountCmd'
 OLD_IDS = ('skadisMountEditBtn', 'skadisMountEditCmd')   # leftovers of the earlier experimental custom-feature builds
@@ -126,6 +130,50 @@ def unit(a):
 def hook_offsets(count):
     """Positions (mm) of `count` hooks along the row: 40 mm apart, centred on 0."""
     return [(i - (count - 1) / 2.0) * HOOK_PITCH for i in range(count)]
+
+
+def spread_offsets(slots, count):
+    """
+    `count` hooks picked from the `slots` slot positions of hook_offsets(slots), spread out:
+    the two outer slots are always used, the others as evenly as possible, symmetric around 0,
+    so the gaps are multiples of 40 mm. An even count never uses the centre slot.
+    Returns None when no symmetric choice exists (an odd count needs an odd number of slots).
+    """
+    grid = hook_offsets(slots)
+    if count >= slots:
+        return grid
+    if count % 2 and slots % 2 == 0:
+        return None
+    idx = set()
+    for j in range(count // 2):                           # left half, mirrored to the right
+        i = int(math.floor(j * (slots - 1) / (count - 1.0) + 0.5))
+        idx.update((i, slots - 1 - i))
+    if count % 2:
+        idx.add((slots - 1) // 2)
+    return [grid[i] for i in sorted(idx)] if len(idx) == count else None
+
+
+def hook_layouts(upper, auto, requested, spread):
+    """
+    Hook rows to try, best first; plan_row keeps the first one that fits on the face.
+      packed: `count` hooks 40 mm apart (an odd count always has one in the centre).
+      spread: the hooks go to the outermost slots that fit, with gaps of 40, 80, ... mm.
+              Automatic quantity drops the centre hook of an odd row (3 -> 2 at the ends,
+              5 -> 4, ...); a single hook stays in the centre.
+    """
+    if not spread:
+        for k in range(upper if auto else requested, 0, -1):
+            yield hook_offsets(k)
+        return
+    if auto:
+        for m in range(upper, 0, -1):
+            yield spread_offsets(m, m if m % 2 == 0 or m == 1 else m - 1)
+        return
+    for k in range(requested, 0, -1):
+        for m in range(max(upper, k), k - 1, -1):
+            layout = spread_offsets(m, k)
+            if layout is not None:
+                yield layout
 
 
 def frame_from_edge(on_face, n, a, b, centroid):
@@ -197,7 +245,7 @@ def get_spec(vertical):
 
 
 def plan_row(on_face, extents, frame, margin, auto, requested,
-             pegs=True, peg_auto=True, peg_requested=0, spec=None):
+             pegs=True, peg_auto=True, peg_requested=0, spec=None, spread=False):
     """
     Pure placement logic (lengths in cm, offsets in mm).
     on_face(point) -> bool tells whether a point of the face plane lies on the face.
@@ -205,6 +253,7 @@ def plan_row(on_face, extents, frame, margin, auto, requested,
     Returns (hooks_mm, peg_list, peg_fit) or an error string.
       peg_list = [(offset_mm, row), ...]  row 0 = hook row, row 1 = 20 mm lower, ...
       peg_fit  = how many pegs would fit in total.
+    spread=False: hooks 40 mm apart; True: hooks spread to the ends (see hook_layouts).
     """
     spec = spec or get_spec(False)
     mid, s, t, edge_len = frame
@@ -221,14 +270,21 @@ def plan_row(on_face, extents, frame, margin, auto, requested,
                 return False
         return True
 
-    def fits(count):
-        return all(fits_at(off, t_base) for off in hook_offsets(count))
+    hook_fit = {}                                         # offset -> fits in the hook row
 
-    upper = int(edge_len / (HOOK_PITCH * MM)) + 2 if auto else requested
-    for k in range(upper, 0, -1):
-        if not fits(k):
+    def fits(layout):
+        for off in layout:
+            key = round(off, 6)
+            if key not in hook_fit:
+                hook_fit[key] = fits_at(off, t_base)
+            if not hook_fit[key]:
+                return False
+        return True
+
+    upper = int(edge_len / (HOOK_PITCH * MM)) + 2
+    for hooks in hook_layouts(upper, auto, requested, spread):
+        if not fits(hooks):
             continue
-        hooks = hook_offsets(k)
         peg_list, peg_fit = [], 0
         ext = extents(mid, s, t) if pegs else None
         if ext is not None:
@@ -549,7 +605,8 @@ def create_features(design, face, edge, st, commit=True):
     plan = plan_row(lambda pt: _on_face(face, pt),
                     lambda o, s_, t_: _face_extents(face, o, s_, t_),
                     frame, st['margin_cm'], st['auto'], st['count'],
-                    st['pegs'], st['peg_auto'], st['peg_count'], spec)
+                    st['pegs'], st['peg_auto'], st['peg_count'], spec,
+                    st.get('spread', False))
     if isinstance(plan, str):
         return plan
     hooks, peg_list, peg_fit = plan
@@ -635,13 +692,13 @@ def create_features(design, face, edge, st, commit=True):
     except Exception:
         _log('create_features failed: ' + traceback.format_exc())
         _rollback(design, count_before, params)
-        return 'Could not build the hooks:\n{}'.format(traceback.format_exc())
+        return 'Could not build the hooks (v{}):\n{}'.format(VERSION, traceback.format_exc())
 
     if not st['auto'] and len(hooks) < st['count']:
         notes.append('Only {} of the {} requested hooks fit on this edge.'.format(
             len(hooks), st['count']))
     if st['auto'] and len(hooks) == 1:
-        notes.append('Only 1 hook fits on this edge (hooks are always 40 mm apart). '
+        notes.append('Only 1 hook fits on this edge (hooks sit in slots 40 mm apart). '
                      'A single hook may not hold the part.')
     if st['pegs'] and peg_fit == 0:
         notes.append('No support peg fits on the face (they sit in the slot rows '
@@ -669,6 +726,11 @@ def add_dialog_inputs(inputs):
     board.listItems.add('Horizontal (slots run left/right)', True)
     board.listItems.add('Vertical (normal: slots run up/down) - L hook', False)
 
+    layout = inputs.addDropDownCommandInput(
+        'layout', 'Hook spacing', adsk.core.DropDownStyles.TextListDropDownStyle)
+    layout.listItems.add('Every 40 mm (as close as possible)', True)
+    layout.listItems.add('Spread to the ends (no centre hook)', False)
+
     inputs.addBoolValueInput('auto', 'Automatic quantity', True, '', True)
     count = inputs.addIntegerSpinnerCommandInput('count', 'Number of hooks', 1, 20, 1, 2)
     count.isEnabled = False
@@ -687,7 +749,8 @@ def add_dialog_inputs(inputs):
 
     inputs.addTextBoxCommandInput(
         'info', '',
-        'Hooks: one row along the top edge, always 40 mm centre to centre. Horizontal '
+        'Hooks: one row along the top edge, either every 40 mm or spread to the ends '
+        '(gaps of 40, 80, ... mm, no centre hook; the default for L hooks). Horizontal '
         'boards get the rounded 14 x 4 mm hook with its lip overhanging towards the '
         'top; vertical boards get the classic L hook (tab through the slot, lip '
         'turning down behind the board). Support pegs: the same tab without the '
@@ -709,6 +772,7 @@ def read_settings(inputs):
         'margin_cm': inputs.itemById('margin').value,
         'board_cm': inputs.itemById('boardT').value,
         'vertical': inputs.itemById('board').selectedItem.index == 1,
+        'spread': inputs.itemById('layout').selectedItem.index == 1,
     }
 
 
@@ -733,7 +797,11 @@ class ValidateHandler(adsk.core.ValidateInputsEventHandler):
 class InputChangedHandler(adsk.core.InputChangedEventHandler):
     def notify(self, args):
         i = args.inputs
-        if args.input.id == 'auto':
+        if args.input.id == 'board':
+            # L hooks default to spread-out hooks, horizontal boards to hooks every 40 mm
+            vertical = args.input.selectedItem.index == 1
+            i.itemById('layout').listItems.item(1 if vertical else 0).isSelected = True
+        elif args.input.id == 'auto':
             i.itemById('count').isEnabled = not args.input.value
         elif args.input.id in ('pegs', 'pegAuto'):
             pegs_on = i.itemById('pegs').value
@@ -767,7 +835,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                 _ui.messageBox(msg, 'Add Skadis')
         except Exception:
             _log('execute failed: ' + traceback.format_exc())
-            _ui.messageBox('Add Skadis failed:\n{}'.format(traceback.format_exc()))
+            _ui.messageBox('Add Skadis v{} failed:\n{}'.format(VERSION, traceback.format_exc()))
 
 
 class CreatedHandler(adsk.core.CommandCreatedEventHandler):
@@ -803,7 +871,7 @@ def run(context):
             try:
                 cmd_def.tooltipDescription = (
                     'Pick a planar face and its top edge. Hooks are placed in one row '
-                    'along the top edge (40 mm apart) and support pegs fill the other '
+                    'along the top edge (in slots 40 mm apart, packed or spread to the ends) and support pegs fill the other '
                     'slot positions below. Everything is built from normal Fusion '
                     'features in one timeline group - expand it and double-click any '
                     'item to edit it.')
@@ -824,7 +892,7 @@ def run(context):
             ctrl = panel.controls.addCommand(cmd_def)
             ctrl.isPromotedByDefault = True
             ctrl.isPromoted = True
-        _log('add-in started (v1.0, native features)')
+        _log('add-in started (v{}, {})'.format(VERSION, os.path.abspath(__file__)))
     except Exception:
         if _ui:
             _ui.messageBox('Add Skadis failed to start:\n{}'.format(traceback.format_exc()))
