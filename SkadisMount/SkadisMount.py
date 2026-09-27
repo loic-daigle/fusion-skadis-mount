@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SkadisMount - Fusion 360 add-in  (v1.2)
+SkadisMount - Fusion 360 add-in  (v1.2.1)
 
 Select a planar face, then the border of that face that is the TOP, choose the type of board
 (horizontal or vertical slots) and click OK  (Solid > Create > Add Skadis).
@@ -69,6 +69,8 @@ V_RADIUS = 2.5        # end radius of tab, lip and pegs (obround). It can never 
                       # so with the 4 mm width it becomes 2.0; a 5 mm wide part gets the full 2.5
 
 MM = 0.1              # Fusion's internal unit is cm
+
+VERSION = '1.2.1'     # keep in step with SkadisMount.manifest
 
 CMD_ID = 'skadisMountCmd'
 OLD_IDS = ('skadisMountEditBtn', 'skadisMountEditCmd')   # leftovers of the earlier experimental custom-feature builds
@@ -661,7 +663,7 @@ def create_features(design, face, edge, st, commit=True):
     except Exception:
         _log('create_features failed: ' + traceback.format_exc())
         _rollback(design, count_before, params)
-        return 'Could not build the hooks:\n{}'.format(traceback.format_exc())
+        return 'Could not build the hooks (v{}):\n{}'.format(VERSION, traceback.format_exc())
 
     if not st['auto'] and len(hooks) < st['count']:
         notes.append('Only {} of the {} requested hooks fit on this edge.'.format(
@@ -804,7 +806,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                 _ui.messageBox(msg, 'Add Skadis')
         except Exception:
             _log('execute failed: ' + traceback.format_exc())
-            _ui.messageBox('Add Skadis failed:\n{}'.format(traceback.format_exc()))
+            _ui.messageBox('Add Skadis v{} failed:\n{}'.format(VERSION, traceback.format_exc()))
 
 
 class CreatedHandler(adsk.core.CommandCreatedEventHandler):
@@ -861,7 +863,7 @@ def run(context):
             ctrl = panel.controls.addCommand(cmd_def)
             ctrl.isPromotedByDefault = True
             ctrl.isPromoted = True
-        _log('add-in started (v1.0, native features)')
+        _log('add-in started (v{}, {})'.format(VERSION, os.path.abspath(__file__)))
     except Exception:
         if _ui:
             _ui.messageBox('Add Skadis failed to start:\n{}'.format(traceback.format_exc()))

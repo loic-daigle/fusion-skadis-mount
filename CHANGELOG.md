@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+- Fixed a crash ("invalid argument parameter") while measuring faces whose edges Fusion could not sample
+  at their exact end parameter.
+- The log (`skadis_debug.log`) now records the real version and the file path when the add-in starts, and
+  error messages show the version, so it is easy to see which copy Fusion is running.
+
 ## 1.2.0
 - New **Hook spacing** option: *Every 40 mm* (as before) or *Spread to the ends*. Spread puts the hooks in the
   outermost slots that fit, with gaps of 40, 80, ... mm, and never forces a hook into the centre: with automatic
@@ -7,8 +13,6 @@
   3 hooks 40 mm apart). With a set number of hooks they are spread as evenly as the slots allow.
 - *Spread to the ends* is the default for vertical boards (L hooks); horizontal boards keep *Every 40 mm*.
   Switching the board type switches this default, and you can still pick either.
-- Fixed a crash ("invalid argument parameter") while measuring faces whose edges Fusion could not sample
-  at their exact end parameter.
 
 ## 1.1.0
 - **Vertical-slot boards** (the normal way SKÅDIS is used) are now supported with the classic **L-shaped
